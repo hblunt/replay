@@ -6,8 +6,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from adapters.llm import ClaudeClient, LLMClient, MockLLMClient
+from adapters.llm import ClaudeClient, LLMClient, MockLLMClient, ZAIClient
 from config import settings
+from steps.analyse_video import analyse_video
 from steps.refine_prompt import refine_prompt
 from test_seedance import router as seedance_test_router
 
@@ -30,15 +31,51 @@ app.include_router(seedance_test_router)
 _REFINED_BY_TASK: dict[str, str] = {}
 
 
-def _llm() -> LLMClient:
+def _refine_llm() -> LLMClient:
+    """LLM used for Seedance prompt refinement.
+
+    Z.AI is preferred (hackathon-provided unlimited credit). Falls back to
+    Claude, then Mock if neither key is set.
+    """
+    if settings.zai_api_key:
+        log.info("using Z.AI (glm-4.6) for prompt refinement")
+        return ZAIClient(api_key=settings.zai_api_key)
     if settings.anthropic_api_key:
+        log.info("using Claude for prompt refinement (Z.AI key not set)")
         return ClaudeClient(api_key=settings.anthropic_api_key)
+    log.warning("no LLM key set — falling back to MockLLMClient")
     return MockLLMClient()
 
 
 @app.get("/")
 def root():
     return {"status": "ok", "service": "reframe"}
+
+
+class AnalyseRequest(BaseModel):
+    video_url: str
+    focus_prompt: str | None = None
+
+
+@app.post("/analyse")
+def analyse(req: AnalyseRequest):
+    if not settings.anthropic_api_key:
+        log.error("/analyse called but ANTHROPIC_API_KEY is empty")
+        raise HTTPException(500, "ANTHROPIC_API_KEY is not set")
+
+    log.info("/analyse received: video_url=%s focus=%r", req.video_url, req.focus_prompt)
+    t0 = time.monotonic()
+    try:
+        summary = analyse_video(settings.anthropic_api_key, req.video_url, req.focus_prompt)
+    except httpx.HTTPError as e:
+        log.exception("video fetch failed")
+        raise HTTPException(502, f"Could not fetch video: {e}") from e
+    except Exception as e:
+        log.exception("analyse failed")
+        raise HTTPException(500, f"Analyse failed: {e}") from e
+
+    log.info("analyse complete in %.1fs: %r", time.monotonic() - t0, summary[:200])
+    return {"summary": summary}
 
 
 class GenerateRequest(BaseModel):
@@ -60,7 +97,7 @@ async def generate(req: GenerateRequest):
     t0 = time.monotonic()
     try:
         refined = refine_prompt(
-            llm=_llm(),
+            llm=_refine_llm(),
             coach_prompt=req.coach_prompt,
             video_url=req.video_url,
         )

@@ -24,20 +24,53 @@ export async function uploadVideo(file, focusPrompt) {
   };
 }
 
-// ─── Analyse (mocked summary — no Roboflow yet) ────────────────────────────
+// ─── Analyse (REAL Claude vision call — no Roboflow yet) ───────────────────
 export async function analyseVideo(video_id) {
-  await sleep(120);
+  const state = getState();
+  const video_url = state.video?.url || SAMPLE_VIDEO_URL;
+  const focus_prompt = state.focusPrompt || '';
   const job_id = 'job_' + uid();
+
   jobs[job_id] = {
     kind: 'analyse',
     video_id,
     started: Date.now(),
+    state: 'running',
     steps: [
-      { name: 'load_clip',       label: 'Loading clip',                        status: 'pending', duration: 700 },
-      { name: 'analyse_tactics', label: 'Generating coaching context (LLM)',   status: 'pending', duration: 1200 },
+      { name: 'fetch',   label: 'Loading the clip',                  status: 'running' },
+      { name: 'frames',  label: 'Extracting key frames',             status: 'pending' },
+      { name: 'vision',  label: 'Vision analysis (Claude)',          status: 'pending' },
     ],
+    result: null,
   };
-  runMockJob(job_id);
+
+  console.log('[analyse] submitting', { video_url, focus_prompt });
+  // Fire and forget — getStatus will reflect progress + final summary.
+  (async () => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url, focus_prompt }),
+      });
+      let data;
+      try { data = await r.json(); }
+      catch { throw new Error(`status ${r.status}: response was not JSON`); }
+      if (!r.ok) throw new Error(`status ${r.status}: ${data.detail || JSON.stringify(data)}`);
+
+      jobs[job_id].state = 'completed';
+      jobs[job_id].steps.forEach((s) => (s.status = 'completed'));
+      jobs[job_id].result = { summary: data.summary };
+      console.log('[analyse] complete:', data.summary);
+    } catch (err) {
+      console.error('[analyse] failed:', err);
+      jobs[job_id].state = 'failed';
+      jobs[job_id].steps.forEach((s) => { if (s.status === 'running') s.status = 'pending'; });
+      jobs[job_id].error = err.message;
+      jobs[job_id].result = { summary: 'Could not analyse the clip — ' + err.message };
+    }
+  })();
+
   return { job_id };
 }
 
@@ -115,28 +148,6 @@ function stageSteps(state) {
   return base.map((s, i) => ({ ...s, status: i === 0 ? 'completed' : i === 1 ? 'running' : 'pending' }));
 }
 
-function runMockJob(job_id) {
-  const job = jobs[job_id];
-  let i = 0;
-  const tick = () => {
-    if (i >= job.steps.length) {
-      job.state = 'completed';
-      job.completed_at = Date.now();
-      job.result = mockAnalysisResult();
-      return;
-    }
-    job.steps[i].status = 'running';
-    job.steps[i].started_at = Date.now();
-    setTimeout(() => {
-      job.steps[i].status = 'completed';
-      job.steps[i].completed_at = Date.now();
-      i++;
-      tick();
-    }, job.steps[i].duration);
-  };
-  tick();
-}
-
 // ─── Status ────────────────────────────────────────────────────────────────
 export async function getStatus(job_id) {
   const job = jobs[job_id];
@@ -210,27 +221,31 @@ export async function getStatus(job_id) {
     };
   }
 
-  // Mock analyse job.
+  // Real analyse job. Advance step indicators cosmetically while the real
+  // /analyse call is in flight (no per-step events from the backend).
   await sleep(80);
-  const totalMs   = job.steps.reduce((a, s) => a + (s.duration || 0), 0) || 1;
-  const elapsedMs = job.steps.filter((s) => s.status === 'completed').reduce((a, s) => a + (s.duration || 0), 0)
-    + (job.steps.find((s) => s.status === 'running')
-        ? Math.min(Date.now() - (job.steps.find((s) => s.status === 'running').started_at || Date.now()),
-                   job.steps.find((s) => s.status === 'running').duration)
-        : 0);
+  const elapsed = Date.now() - job.started;
+  if (job.state === 'running') {
+    // Rough timing estimates: fetch ~1s, frame extract ~1s, vision ~5–10s.
+    if (elapsed > 1000 && job.steps[0].status !== 'completed') {
+      job.steps[0].status = 'completed';
+      job.steps[1].status = 'running';
+    }
+    if (elapsed > 2500 && job.steps[1].status !== 'completed') {
+      job.steps[1].status = 'completed';
+      job.steps[2].status = 'running';
+    }
+  }
+  const progress = job.state === 'completed'
+    ? 1
+    : Math.min(0.95, 0.10 + (elapsed / 12_000) * 0.85);
   return {
     job_id,
     state: job.state || 'running',
-    progress: Math.min(1, elapsedMs / totalMs),
+    progress,
     steps: job.steps.map((s) => ({ name: s.name, label: s.label, status: s.status })),
     result: job.result || null,
+    error: job.error || null,
   };
 }
 
-function mockAnalysisResult() {
-  // Stage 1: hard-coded summary tailored to the sample lineout clip.
-  // Stage 2 will replace this with a real Roboflow + LLM tactical pass.
-  return {
-    summary: 'Lineout phase. The winger is in the correct position.',
-  };
-}

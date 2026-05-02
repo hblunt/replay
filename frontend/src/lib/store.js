@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 // Pre-hosted demo clip — Stage 1 uses this URL directly with Seedance.
 // Update before demo if the host expires the file.
 export const SAMPLE_VIDEO_URL =
-  'https://tmpfiles.org/dl/36213011/lineoutexample.mp4';
+  'https://tmpfiles.org/dl/36219492/lineoutexample.mp4';
 export const SAMPLE_VIDEO_FALLBACK =
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
