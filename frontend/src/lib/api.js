@@ -39,7 +39,7 @@ export async function analyseVideo(video_id) {
     steps: [
       { name: 'fetch',   label: 'Loading the clip',                  status: 'running' },
       { name: 'frames',  label: 'Extracting key frames',             status: 'pending' },
-      { name: 'vision',  label: 'Vision analysis (Claude)',          status: 'pending' },
+      { name: 'vision',  label: 'Vision analysis (Claude — Roboflow soon)', status: 'pending' },
     ],
     result: null,
   };

@@ -34,8 +34,13 @@ export default function AnalyseScreen() {
         const s = await api.getStatus(job_id);
         if (cancelled) return;
         setJob(s);
-        if (s.state === 'completed') storeSet({ analysis: s.result });
-        else setTimeout(poll, 250);
+        if (s.state === 'completed') {
+          storeSet({ analysis: s.result });
+        } else if (s.state === 'failed') {
+          // Bail and surface the error in the loader card.
+        } else {
+          setTimeout(poll, 500);
+        }
       };
       poll();
     })();
@@ -44,19 +49,39 @@ export default function AnalyseScreen() {
 
   if (!video) return null;
   if (!state.analysis) {
+    const failed = job?.state === 'failed';
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{
           background: t.bgRaised, borderRadius: t.radiusLg, padding: 32,
-          boxShadow: t.shadow, minWidth: 460,
+          boxShadow: t.shadow, minWidth: 460, maxWidth: 640,
         }}>
           <div style={{ textAlign: 'center', marginBottom: 12 }}>
-            <div style={kicker(t)}>Phase 2 · Loading</div>
+            <div style={kicker(t)}>{failed ? 'Phase 2 · Failed' : 'Phase 2 · Loading'}</div>
             <h2 style={{ fontSize: 18, fontWeight: 600, margin: '6px 0 0', letterSpacing: '-0.01em' }}>
-              Loading the clip
+              {failed ? 'Could not analyse the clip' : 'Loading the clip'}
             </h2>
           </div>
           <RugbyLoader steps={job?.steps || []} progress={job?.progress || 0} />
+          {failed && (
+            <>
+              <pre style={{
+                marginTop: 14, padding: '10px 12px', background: t.bgInset,
+                borderRadius: t.radiusSm, fontFamily: t.fontMono, fontSize: 11,
+                color: t.red, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>{job?.error || job?.result?.summary}</pre>
+              <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button
+                  onClick={() => { storeSet({ analysis: null }); window.location.reload(); }}
+                  style={{ ...btnGhost(t) }}
+                >Retry</button>
+                <button
+                  onClick={() => { storeSet({ video: null, analysis: null, generation: null, annotations: [] }); navigate('/upload'); }}
+                  style={{ ...btnSolid(t) }}
+                >Start over</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -170,6 +195,11 @@ function AnalyseLoaded({ video, analysis }) {
         <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: t.ink70 }}>
           {analysis.summary}
         </p>
+        <div style={{
+          fontSize: 10, fontFamily: t.fontMono, color: t.ink45, letterSpacing: '0.04em',
+        }}>
+          via Claude vision · Roboflow tracking soon
+        </div>
 
         <div style={{
           marginTop: 8, padding: '12px 14px', background: t.bgRaised, borderRadius: t.radius,

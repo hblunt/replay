@@ -99,43 +99,84 @@ function GenerateLoaded() {
 
   const origRef = useRef(null);
   const newRef  = useRef(null);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(generation.duration_s || video.duration || 0);
-  const [playing, setPlaying] = useState(false);
 
-  // Resolve duration from the regenerated clip (it dictates the shared timeline).
+  // Per-side state — each video keeps its own playhead even after switching.
+  const [origTime, setOrigTime] = useState(0);
+  const [newTime,  setNewTime]  = useState(0);
+  const [origDuration, setOrigDuration] = useState(0);
+  const [newDuration,  setNewDuration]  = useState(generation.duration_s || 0);
+  const [origPlaying, setOrigPlaying] = useState(false);
+  const [newPlaying,  setNewPlaying]  = useState(false);
+
+  // Which clip is currently driving the controls.
+  const [selectedSide, setSelectedSide] = useState('orig');
+  const isOrig    = selectedSide === 'orig';
+  const time      = isOrig ? origTime : newTime;
+  const duration  = isOrig ? origDuration : newDuration;
+  const playing   = isOrig ? origPlaying : newPlaying;
+
+  // Wire metadata + play/pause events for both videos. Time is read each RAF
+  // while playing (avoids 60Hz state-spam when paused).
   useEffect(() => {
-    const v = newRef.current;
-    if (!v) return;
-    const onMeta = () => setDuration(v.duration || 0);
-    v.addEventListener('loadedmetadata', onMeta);
-    return () => v.removeEventListener('loadedmetadata', onMeta);
+    const a = origRef.current, b = newRef.current;
+    if (!a || !b) return;
+    const onMetaA = () => setOrigDuration(a.duration || 0);
+    const onMetaB = () => setNewDuration(b.duration || 0);
+    const onPlayA = () => setOrigPlaying(true);
+    const onPauseA = () => setOrigPlaying(false);
+    const onPlayB = () => setNewPlaying(true);
+    const onPauseB = () => setNewPlaying(false);
+    a.addEventListener('loadedmetadata', onMetaA);
+    b.addEventListener('loadedmetadata', onMetaB);
+    a.addEventListener('play', onPlayA);
+    a.addEventListener('pause', onPauseA);
+    b.addEventListener('play', onPlayB);
+    b.addEventListener('pause', onPauseB);
+    return () => {
+      a.removeEventListener('loadedmetadata', onMetaA);
+      b.removeEventListener('loadedmetadata', onMetaB);
+      a.removeEventListener('play', onPlayA);
+      a.removeEventListener('pause', onPauseA);
+      b.removeEventListener('play', onPlayB);
+      b.removeEventListener('pause', onPauseB);
+    };
   }, []);
 
   useEffect(() => {
     let raf;
     const tick = () => {
-      const v = newRef.current;
-      if (v && !v.paused) {
-        setTime(v.currentTime);
-        if (origRef.current) origRef.current.currentTime = v.currentTime;
-      }
+      const a = origRef.current, b = newRef.current;
+      if (a && !a.paused) setOrigTime(a.currentTime);
+      if (b && !b.paused) setNewTime(b.currentTime);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const togglePlay = () => {
-    const a = origRef.current, b = newRef.current;
-    if (!a || !b) return;
-    if (b.paused) { a.play(); b.play(); setPlaying(true); }
-    else          { a.pause(); b.pause(); setPlaying(false); }
+  const switchSide = (side) => {
+    if (side === selectedSide) return;
+    // Pause both on side-switch so the previous clip's playhead freezes.
+    if (origRef.current && !origRef.current.paused) origRef.current.pause();
+    if (newRef.current  && !newRef.current.paused)  newRef.current.pause();
+    setSelectedSide(side);
   };
+
+  const togglePlay = () => {
+    const v = isOrig ? origRef.current : newRef.current;
+    const other = isOrig ? newRef.current : origRef.current;
+    if (!v) return;
+    if (other && !other.paused) other.pause();
+    if (v.paused) v.play();
+    else v.pause();
+  };
+
   const seek = (s) => {
-    setTime(s);
-    if (origRef.current) origRef.current.currentTime = s;
-    if (newRef.current)  newRef.current.currentTime  = s;
+    const v = isOrig ? origRef.current : newRef.current;
+    if (!v) return;
+    v.currentTime = s;
+    if (isOrig) setOrigTime(s);
+    else setNewTime(s);
   };
 
   const [tool, setTool] = useState(null);
@@ -145,21 +186,23 @@ function GenerateLoaded() {
 
   const makeHandlers = (side, ref) => ({
     onMouseDown: (e) => {
+      switchSide(side);
       if (!tool) return;
       const rect = ref.current.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top)  / rect.height;
+      const tNow = side === 'orig' ? origTime : newTime;
       if (tool === 'draw') {
         setDrafting({ id: 'an_' + Math.random().toString(36).slice(2,8),
-          side, type: 'draw', t: time, path: [[x, y]] });
+          side, type: 'draw', t: tNow, path: [[x, y]] });
       } else if (tool === 'pin') {
         addAnnotation({ id: 'an_' + Math.random().toString(36).slice(2,8),
-          side, type: 'pin', t: time, x, y });
+          side, type: 'pin', t: tNow, x, y });
         setTool(null);
       } else if (tool === 'note') {
         const text = prompt('Note text:');
         if (text) addAnnotation({ id: 'an_' + Math.random().toString(36).slice(2,8),
-          side, type: 'note', t: time, x, y, text });
+          side, type: 'note', t: tNow, x, y, text });
         setTool(null);
       }
     },
@@ -181,12 +224,22 @@ function GenerateLoaded() {
   const addAnnotation = (a) => storeSet((s) => ({ ...s, annotations: [...s.annotations, a] }));
   const removeAnnotation = (id) => storeSet((s) => ({ ...s, annotations: s.annotations.filter((a) => a.id !== id) }));
 
+  // Annotations on each clip are anchored to that clip's time, so filter by
+  // whichever side they belong to using its own playhead.
   const visibleOrig = state.annotations.filter(
-    (a) => (a.side || 'new') === 'orig' && Math.abs(a.t - time) < 1.5
+    (a) => (a.side || 'new') === 'orig' && Math.abs(a.t - origTime) < 1.5
   );
   const visibleNew = state.annotations.filter(
-    (a) => (a.side || 'new') === 'new' && Math.abs(a.t - time) < 1.5
+    (a) => (a.side || 'new') === 'new' && Math.abs(a.t - newTime) < 1.5
   );
+
+  // Scrubber markers: only the selected side's annotations.
+  const selectedAnnotations = state.annotations.filter(
+    (a) => (a.side || 'new') === selectedSide
+  );
+
+  const selectedOutline = `3px solid ${t.red}`;
+  const idleOutline = `3px solid transparent`;
 
   return (
     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 320px',
@@ -194,22 +247,42 @@ function GenerateLoaded() {
       <main style={{ display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
         <div style={{ flex: 1, minHeight: 0, display: 'grid',
           gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ position: 'relative', cursor: tool ? 'crosshair' : 'default' }}
-               ref={origOverlayRef} {...origHandlers}>
+          <div
+            ref={origOverlayRef}
+            {...origHandlers}
+            style={{
+              position: 'relative',
+              cursor: tool ? 'crosshair' : 'pointer',
+              outline: isOrig ? selectedOutline : idleOutline,
+              outlineOffset: 0,
+              borderRadius: t.radiusLg,
+              transition: 'outline-color 0.15s',
+            }}
+          >
             <VideoStage
               videoRef={origRef}
               videoUrl={video.url}
-              time={time} duration={duration}
+              time={origTime} duration={origDuration}
               label="ORIGINAL"
               childrenOverlay={<AnnotationLayer annotations={visibleOrig} drafting={drafting && drafting.side === 'orig' ? drafting : null} />}
             />
           </div>
-          <div style={{ position: 'relative', cursor: tool ? 'crosshair' : 'default' }}
-               ref={newOverlayRef} {...newHandlers}>
+          <div
+            ref={newOverlayRef}
+            {...newHandlers}
+            style={{
+              position: 'relative',
+              cursor: tool ? 'crosshair' : 'pointer',
+              outline: !isOrig ? selectedOutline : idleOutline,
+              outlineOffset: 0,
+              borderRadius: t.radiusLg,
+              transition: 'outline-color 0.15s',
+            }}
+          >
             <VideoStage
               videoRef={newRef}
               videoUrl={generation.regenerated_url}
-              time={time} duration={duration}
+              time={newTime} duration={newDuration}
               watermark="REGENERATED"
               childrenOverlay={<AnnotationLayer annotations={visibleNew} drafting={drafting && drafting.side === 'new' ? drafting : null} />}
             />
@@ -221,8 +294,14 @@ function GenerateLoaded() {
         <Scrubber
           time={time} duration={duration} playing={playing}
           onPlayToggle={togglePlay} onSeek={seek}
-          markers={state.annotations.map((a) => ({ t: a.t, label: (a.side || 'new') + ':' + a.type }))}
+          markers={selectedAnnotations.map((a) => ({ t: a.t, label: a.type }))}
         />
+        <div style={{
+          fontSize: 11, fontFamily: t.fontMono, color: t.ink55,
+          letterSpacing: '0.04em', textAlign: 'center', marginTop: -4,
+        }}>
+          controls drive the <span style={{ color: t.red, fontWeight: 600 }}>{isOrig ? 'ORIGINAL' : 'REGENERATED'}</span> clip · click the other to switch
+        </div>
       </main>
 
       <aside style={{
