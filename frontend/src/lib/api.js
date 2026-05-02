@@ -228,10 +228,9 @@ export async function getStatus(job_id) {
 }
 
 function mockAnalysisResult() {
+  // Stage 1: hard-coded summary tailored to the sample lineout clip.
+  // Stage 2 will replace this with a real Roboflow + LLM tactical pass.
   return {
-    summary:
-      "Your clip's loaded. Scrub through, mark up anything you want changed (draw arrows, drop pins, " +
-      "or add notes to specific moments) and write what you want different in the prompt below. " +
-      "Replay will regenerate a corrected version of the clip.",
+    summary: 'Lineout phase. The winger is in the correct position.',
   };
 }
