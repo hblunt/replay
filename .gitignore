@@ -1,0 +1,53 @@
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Prefect
+.prefect/
+prefect.db
+
+# Local media (videos are large — store in Butterbase, not git)
+clips/
+uploads/
+outputs/
+*.mkv
+*.mp4
+*.mov
+*.avi
+
+# Logs
+*.log
