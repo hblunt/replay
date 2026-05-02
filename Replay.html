@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Replay</title>
+<meta name="viewport" content="width=1280" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f4f1ea; }
+  body { font-family: "Inter", system-ui, sans-serif; color: #282622; min-width: 1280px; }
+  #root { min-height: 100vh; display: flex; flex-direction: column; }
+  textarea, input, button { font-family: inherit; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: rgba(40,38,34,0.18); border-radius: 4px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+
+  /* Rugby ball loader */
+  @keyframes rugbyBounce {
+    0%,100% { transform: translateY(0)   rotate(-12deg); }
+    50%     { transform: translateY(-44px) rotate(12deg); }
+  }
+  .rugby-ball-bounce { animation: rugbyBounce 1.05s cubic-bezier(.55,.15,.45,.85) infinite; }
+  @keyframes stepSpin { to { transform: rotate(360deg); } }
+  .step-spin { animation: stepSpin 0.8s linear infinite; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Order matters: theme + state + api come before components, components before screens. -->
+<script type="text/babel" src="src/components/theme.js"></script>
+<script type="text/babel" src="src/lib/state.js"></script>
+<script type="text/babel" src="src/lib/api.js"></script>
+
+<script type="text/babel" src="src/components/Chrome.jsx"></script>
+<script type="text/babel" src="src/components/Pitch.jsx"></script>
+<script type="text/babel" src="src/components/Scrubber.jsx"></script>
+<script type="text/babel" src="src/components/RugbyLoader.jsx"></script>
+
+<script type="text/babel" src="src/screens/Upload.jsx"></script>
+<script type="text/babel" src="src/screens/Analyse.jsx"></script>
+<script type="text/babel" src="src/screens/Generate.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+  function App() {
+    const route = window.useRoute();
+    const [state] = window.useStore();
+
+    let stage = 'upload';
+    let screen = <window.UploadScreen />;
+    if (route.name === 'analyse')  { stage = 'analyse';  screen = <window.AnalyseScreen />; }
+    if (route.name === 'generate') { stage = 'generate'; screen = <window.GenerateScreen />; }
+
+    return (
+      <>
+        <window.Chrome
+          stage={stage}
+          file={state.video?.filename}
+        />
+        {screen}
+      </>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

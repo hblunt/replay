@@ -13,7 +13,10 @@ Rules:
 - Identify players by jersey colour + position when possible (e.g. "the yellow team's right winger", "the red #10"). Avoid invented jersey numbers.
 - Describe motion in terms of direction and pace, not abstractions. "Sprints diagonally toward the touchline at full pace" beats "moves better".
 - Keep all other elements of the scene unchanged. Do not invent extra players or actions the coach didn't ask for.
-- Aim for 2–4 sentences. Be specific but not flowery.
+- Aim for 2–4 sentences for the change description.
+
+CRITICAL — visual continuity clause (always append, verbatim, as a final sentence):
+"Preserve the camera angle, framing, lens, lighting, pitch markings, weather, crowd, jersey colours, and the identities and appearances of every player not specifically modified, exactly as in the input clip — only the changes described should differ from the original."
 """
 
 

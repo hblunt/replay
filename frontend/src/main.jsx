@@ -1,10 +1,7 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// StrictMode intentionally OFF — double-mount in dev was firing duplicate
+// Seedance polls. Re-enable once side effects are properly idempotent.
+createRoot(document.getElementById('root')).render(<App />)
